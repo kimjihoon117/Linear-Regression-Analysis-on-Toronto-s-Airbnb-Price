@@ -1,0 +1,471 @@
+---
+title: "Complete Multiple Linear Regression on Toronto's AirBnB Pricng (Part 2: Analysis and Validation of the Best Model)"
+output:
+  pdf_document: default
+date: "2023-12-06"
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(rmarkdown)
+library(knitr)
+raw_uncleaned_data <- read.csv("original_dataset.csv")
+head(raw_uncleaned_data)
+```
+
+```{r, include=FALSE}
+data <- raw_uncleaned_data %>%
+  select(
+    Price = price,
+    Entire_Place = room_type,
+    Bedrooms = bedrooms,
+    Beds = beds,
+    Bathrooms = bathrooms_text,
+    Amenities = amenities,
+    Accommodates = accommodates,
+    Cleanliness_Rating = review_scores_cleanliness,
+    Host_Communication_Rating = review_scores_communication,
+    Superhost = host_is_superhost
+  )
+```
+
+```{r, include=FALSE}
+data$Price <- as.numeric(gsub("\\$", "", data$Price))
+
+data$Entire_Place <- ifelse(data$Entire_Place == 'Entire home/apt', 'Entire', 'Shared')
+
+data$Bedrooms <- ifelse(is.na(data$Bedrooms) | data$Bedrooms == "", 1, as.numeric(data$Bedrooms))
+
+data$Beds <- ifelse(is.na(data$Beds) | data$Beds == "", 0, as.integer(data$Beds))
+
+
+data$Bathrooms <- sapply(data$Bathrooms, function(x) {
+  if (grepl("alf", x)) {
+    return(0.5)
+  } else {
+    return(as.numeric(gsub("[^0-9.]", "", x)))
+  }
+})
+
+data$Amenities <- str_count(data$Amenities, ",") + 1
+
+data$Superhost <- ifelse(is.na(data$Superhost) | data$Superhost == "", 'f', data$Superhost)
+```
+
+```{r,include=FALSE}
+final_data <- na.omit(data)
+```
+
+```{r,include=FALSE}
+write.csv(final_data, file = "final_data.csv", row.names = FALSE)
+```
+
+```{r,include = FALSE}
+mlr_model <- lm(Price~Bedrooms+Bathrooms+Cleanliness_Rating+Entire_Place+Superhost:Bedrooms, final_data)
+```
+
+
+## Contribution
+
+Ji Hoon Kim: Results, Formatting R Markdown
+
+
+Donkeun Jang: Methods
+
+Geon Lim: Discussion
+
+Grace Boss: Introduction and Ethics
+
+
+
+## Introduction
+Our goal is to analyze internal factors of Airbnbs in order to understand how they influence the pricing of listings. Such factors include the number of bedrooms, the number of bathrooms, the rating of cleanliness on a scale from zero to five, whether or not the host was rated ‘Superhost’ (if ‘Superhost’, it takes on the value one multiplied by the number of bedrooms, if no takes on value zero), and whether or not the listing was shared or not with a one indicating shared and a zero indicating not shared. These are the factors that we have decided upon for our analysis, as they have come up in many previous analyses as being important factors for pricing as well as being viable for a linear regression analysis, as they complement each other (Chattopadhyay). While there are other important factors aside from those we have decided upon when discussing pricing, we made the decision to analyze only internal factors, despite external factors also having equally important sway, but create a more complicated analysis which is not as viable for a linear regression (Voltes-Dorta). As a result of both lack of data and simplicity, we decided against including such factors, and instead decided to perform a regression that reports solely upon internal factors. It is important to note that there other factors are also present when determining a pricing scheme, and these can take on a theoretical approach as opposed to a purely numeric one, hence we may see inconsistencies in our linear regression as a result of an inability to quantify these theoretical approaches (Kwok).
+
+While many of these sources and many previous analyses tend to focus on a variety of factors that influence pricing schemes and take on more complex modelling techniques to account for these factors, they fail to hone in on one specific area that can influence pricing, and hence we hope to create a more specialized model. This model will contribute to the understanding of those pricing their listings as well as potential customers, as it will allow for them to better understand how the factors that are in the control of the listing provider contribute to the price without requiring potential confounding variables within the estimation. As a result, our analysis aims to answer in a more specific manner how only internal factors can influence the pricing of an Airbnb.
+
+
+
+## Methods
+Initially, our model, comprising four numerical and two categorical variables, violated all four linear regression assumptions and two conditions for multiple linear regression. To address Normality and Linearity issues, we applied the Box-Cox power transformation. However, uncorrelated errors persisted due to data characteristics. The Box-Cox transformation aimed to maintain Normality and Linearity, addressing the building of an effective linear model focused on accurate predictions.
+
+In our modified linear model, we calculated the Confidence Interval (CI) for each slope coefficient, which helped justify the reasonability of these coefficients and enabled hypothesis testing. We then established a 95% Confidence Interval for the mean of the response variables, indicating the likely range of the true mean. Additionally, we computed a 95% Prediction Interval (PI) for actual response values, providing a range of possble value for an actual response.
+
+The next step was regarding the ANOVA (Analysis of Variance) test. The purpose of the ANOVA test was to evaluate whether there is a statistically significant linear relationship for at least one predictor in the model. This was done by calculating the mean squares, specifically the Mean Square Regression (MSreg) and the Mean Square Residual (MSR), to derive the test statistic, F*. We set our confidence level same at 95%, as this is a commonly used benchmark. The test concluded that if the test statistic exceeds the critical value, it indicates a significant linear relationship for at least one predictor.
+
+After conducting the ANOVA test, the next step involved decomposing the model to perform a new hypothesis test. This test was crucial for determining if multiple predictors can be simultaneously removed from the model. Given the ANOVA test's indication of a significant linear relationship with at least one predictor, it was important to identify which predictors have this relationship. By using individual T test, beforehand, we were able to find which variable is significantly related. Realizing that the predictors are significant, here, we used the partial F test. This test assesses whether removing a subset of predictors significantly affects the model's performance. The comparison is made by looking at the Sum of Squares Regression (SSreg) values of the full model and a reduced model. If these values are similar, the Residual Sum of Squares (RSS) will also be comparable, suggesting that a reduced model can also be used. On the other hand, if the RSS of the reduced model is significantly higher than that of the full model, it suggests the full model is more appropriate.
+
+Getting the result acknowledging between the reduced model or full model is better, we further evaluated the goodness of these two data sets. We applied adjusted R-square to see which predictor should be removed or added. When we derive a conclusion stating that one of the model has a higher R-squared and a adjusted R-squared value, it signifies a better model fit, as it suggests that the model explains a greater proportion of the variance and is not overly complex. 
+
+After calculating the adjusted R-squared for a particular model and assessing multicollinearity levels, it is essential to address automated model selection. This process aims to determine if there exists a better model than the one we selected through the Partial T-test. Automated selection evaluates model performance using criteria such as the Akaike Information Criterion (AIC), Bayesian Information Criterion (BIC), and adjusted R-squared. Smaller values in these metrics generally indicate a better model fit.
+
+This study adapted three types of automated selection methods:
+
+**1. Forward Selection:** This method begins with an intercept-only model and then proceed to look at whether we get a better model by adding predictors.
+
+**2. Backward Selection:** Backward selection starts by beginning with a full model and proceed to see if a smaller model is better by deleted predictors.
+
+**3. Stepwise Selection:** This method combines elements of both forward and backward selection, allowing us to both add predictiors as well as delete them
+
+For each method, we calculated AIC and BIC values. The model giving the smallest values for these criteria is considered the best fitting model. By comparing AIC and BIC across different model-building approaches, we aimed to identify the most effective model in terms of predictive accuracy.
+
+Within the process of getting the result, it was crucial to recognize problems related with predictors by assessing multicollinearity. This occurs when two or more predictors in a regression model are highly correlated. This correlation leads to inaccurate coefficient estimates, conflicting significance levels, and inflated variance estimates, which can compromise the model's reliability. Therefore, to measure the level of multicollinearity, it was important to address the value of Variance Inflation Factor (VIF) as it explicitly quantifies the impact that the multicollinearity between predictors has on the variance. We specifically measured the degree to which the variance has been inflated due to multicollinearity. A VIF value exceeding 5 often indicates a concerning level of multicollinearity.
+
+Additionally, the analysis included assessing problematic observations to ensure overall accuracy in the dataset. This involved identifying observations that disproportionately influence the model. These are three key measures that were used:
+
+**1. Leverage Points:** These are observations that have a significant impact on the model as a whole.
+
+**2. Outliers:** Observations that significantly differ from the rest of the data points.
+
+**3. Influential Points:** These are identified using Cook's D, DFFITS, and DFBETAS, each measuring the influence of an observation on the fitted values and estimated coefficients.
+
+Calculating and examining these measures allowed us to identify potentially problematic observations that could disproportionately influence the overall dataset. This evaluation played a crucial role in ensuring the accuracy and reliability of the final model. 
+
+Consequently, in this research, we successfully developed a Multiple Linear Regression model closely aligned with our research question, employing a systematic and stastistical approach of following ANOVA test to Partial T-test. Important section to our methodology was addressing multicollinearity among predictors, crucial for the model’s accuracy and interpretability. Through the use of Adjusted R-squared, Variance Inflation Factor (VIF), and automated selection methods, we refined our model, ensuring it was both statistically credible and relevant to our research question. We also managed influential data points like leverage points and outliers to enhance the model's reliability. Therefore, our efforts resulted in to find a best MLR model that found specific predictors that contributed to the overall price of Airbnb listings in Canadian Dollars.
+
+
+\newpage
+## Results
+
+### MODULE 4
+```{r, include=FALSE}
+#Fixing Normality / Linearity Assumption using Boxcox Transformation on the Predictors
+# AND Fixing Constant Variance by using Boxcox Transformation on the Response
+#Since Uncorrelated Error is not fixable, we must include that in our limitations.
+
+options(repos = c(CRAN = "https://cran.rstudio.com"))
+install.packages("car")
+install.packages("MASS")
+install.packages("leaps")
+library(MASS)
+library(leaps)
+library(car)
+```
+In part 1 of this assignment, we saw that all 4 linear assumptions were violated as well as the 2 MLR conditions; 1. Conditional Mean Response and Predictor vs. Predictor relationship. Our first limitation occurs here because there is no way to address uncorrelated errors because that is the nature of the data. However, we can address Normality and Linearity assumption through applying Box-cox transformation on the predictors and the response variable. This transformation will likely correct constant variance assumption as well, if not, we may apply variance stabilizing transformation on the response variable to address constant variance assumption. 
+
+```{r, echo=FALSE}
+boxCox(mlr_model)
+```
+We see that lambda is very close to 0, implying that we should use the natural log function on the response variable.
+
+```{r, include=FALSE}
+#add log Price variable
+final_data$logPrice <- log(final_data$Price)
+```
+Due to the result above, I created a new column called "logPrice" which is the log value of the price of the AirBnB per night. 
+
+```{r, echo=FALSE}
+#We have to remove non-positive values for Boxcox because if the power is negative, it cannot be applied to non-positive values
+final_data1 <- final_data %>%
+  filter(Bathrooms > 0, Cleanliness_Rating >0)
+p <- powerTransform(final_data1[, c(3,5,8)])
+print("Estimate power")
+p$lambda
+#values are Bedroom = -3, Bathrooms = -2, Cleanliness_Rating = 10
+```
+We can only apply boxcox transformation on numerical predictors and these values must be strictly positive otherwise certain functions like log() cannot be applied for transformation. Price is strictly positive thus there were no issues above, but because there are some properties with 0 bathrooms and some have cleanliness rating of 0/5, these values were removed before applying the transformation. During this process 38 data points were removed which is negligible since less than 0.3% of the dataset. As shown above, the value of the power for the transformation was approximately -3 for Bedrooms, -2 for Bathrooms and 10 for Cleanliness rating
+
+```{r, echo=FALSE}
+#Create a fixed model
+fixed_model <- lm(logPrice ~ I(1/Bedrooms^3) + I(1/Bathrooms^2) + Cleanliness_Rating^10 + Entire_Place + Superhost:Bedrooms, data = final_data1)
+summary(fixed_model)
+```
+Here this is the fixed model of the original model with the power transformation applied.
+$$\text{logPrice } (Y) = 4.805952
+- 0.196419\text{(Number of Bedrooms)}^{-3} - 0.254893 \text{(Number of Bathrooms)}^{-2}$$
+$$+ 0.098712\text{(Cleanliness Rating)}^{10}
+-0.637169\textbf{ I}(\text{Entire Place = Shared}) + 0.189635\text{(Superhost=`t' : Bedrooms)} +\hat\epsilon$$
+
+### Rechecking Assumption
+```{r, echo=FALSE}
+ehat_fixed <- resid(fixed_model)
+yhat_fixed <- fitted(fixed_model)
+
+#1. MLR Condition 1: Conditional Mean Response 
+plot(x = yhat_fixed   , y =  final_data1$logPrice  , main="Response vs Fitted",
+     xlab="Fitted", ylab="Price")
+abline(a = 0, b = 1, lty=2)
+
+#2. MLR Condition 2: Predictor vs Predictor 
+final_data1$t_bedrooms <- 1/final_data1$Bedrooms^3
+final_data1$t_bathrooms <- 1/final_data1$Bathrooms^2
+final_data1$t_clean_rating <- final_data1$Cleanliness_Rating^10
+pairs(final_data1[,c(12,13,14)])
+```
+\newline
+```{r, echo=FALSE}
+#3. SLR: Residual vs Fitted (Y)
+plot(x = yhat_fixed, y = ehat_fixed, main = "Residuals vs Fitted Value", ylab = "Residuals", xlab = "Fitted Value")
+
+#4. Residual vs Predictors (numerical)
+plot(ehat_fixed ~ 1/(final_data1[,3])^3, main = "Residuals vs Bedrooms", ylab = "Residuals", xlab = "Bedrooms")
+
+
+#5. Boxplot for Predictors (categorical)
+boxplot(ehat_fixed ~ final_data1$Entire_Place, main = "Residuals by Entire Place", ylab = "Residuals", xlab = "Entire Place")
+
+
+
+#6. QQ Plots
+qqnorm(ehat_fixed)
+qqline(ehat_fixed)
+```
+
+Firstly, looking at the MLR Condition 1: Conditional Mean Response, There is a random scatter around the diagonal and no simple function seems to be present, therefore we can safely conclude that the Condition 1 holds. For MLR Condition 2: Predictor vs Predictor, There are absolutely no signs of curves or non linear patterns implying that the predictors are at most linearly related. Therefore we also conclude that Condition 2 holds. Second, looking at the residual vs Fitted values, we see that there is a slight fanning pattern, which implies that there may be a violation of constant variance. Otherwise, the plot appears to have random scatter, not violating uncorrelated errors or linearity. Similarly, when observing each numeric predictor versus residuals, a similar fanning pattern is a present, hence supporting the violation of constant variance, while the graphs otherwise have random scatter which does  not violate uncorrelated errors or linearity. The Residuals vs Entire place plot appears to have some significant clustering of outliers, which could point towards to the uncorrelated errors assumptions. This violation is further supported by the Residuals vs Superhost plot, as there appears to be some clustering of outliers in this plot as well. Lastly, the QQNorm plot only has slight deviations on each end from the straight line, and hence there is no evident violation of normality. Only MLR Condition 1,2 and Residual vs Fitted, Residual vs Bedrooms, Boxplot for entire_place, and QQplot is shown above respectively. Rest in the appendix.
+
+
+
+### MODULE 5
+```{r, echo=FALSE}
+print("confidence interval for coeffecients")
+confint(fixed_model, level=0.95)
+
+
+predictor_value <- data.frame(Bedrooms=1,Bathrooms=1,Entire_Place="Entire",Cleanliness_Rating=4.5,Superhost='t')
+
+#CI for mean response
+print("confidence interval for mean response")
+predict(fixed_model,newdata = predictor_value, interval="confidence", level=0.95)
+
+#PI for actual response
+print("prediction interval for actual response")
+predict(fixed_model,newdata = predictor_value, interval="prediction", level=0.95)
+```
+This is the 95% confidence interval of the estimated coefficients. 
+
+Additionally, we see that our 95% confidence interval for the logPrice of the airbnb (Entire Property) per night with 1 Bedroom. 1 Bathroom and 4.0/5.0 Cleanliness Rating is [4.971173,5.005785] 
+
+Finally, our prediction interval is [3.933827,6.043131] which represents the 95% mode likely logPrice of the airbnb (Entire Property) per night with 1 Bedroom. 1 Bathroom and 4.0/5.0 Cleanliness Rating. 
+
+
+### MODULE 6
+```{r, echo=FALSE}
+print("The F-Statistic of the fixed model is:")
+summary(fixed_model)$fstatistic[1]
+
+print("with our F* value being:")
+qf(0.95,6,14245)
+```
+Our F-statistic of the model is 1817.172 as shown in the summary above, since its significantly larger than the F* (1817 > 2.09) we fail to reject the null hypothesis and conclude that significant linear relationship exists for at least one predictor. 
+
+```{r, echo=FALSE}
+#Because there were no insignificant predictors, prof said it doesnt make sense to do a partial F test. However, Just to try it 
+reduced_model <- lm(logPrice ~ Bedrooms + Cleanliness_Rating + Superhost:Bedrooms, data=final_data1)
+
+anova(reduced_model,fixed_model)
+#even though partial F says reduced modle is better, due to low R squared value and the result is not appropriate due to all predictors being significant, its still better to keep the original
+```
+Because there were no insignificant predictors in fact all predictors are very significant, it is not appropriate to do the partial F test. However, when conducting a partial F test with the simpler reduced model (logPrice = Bedrooom + Cleanliness_Rating + Superhost:Bedrooms) as an example, the R squared value decreases significantly 
+( `r summary(reduced_model)$adj.r.squared*100` %) relative to the original model (43.33%) and it is no longer a reliable model. Even though the partial F test tells us that reduced model is better, it is most likely due to all predictors being significant in the first place and it automatically suggests simpler model. Therefore we conclude that our fixed_model is still the best model.
+
+
+### MODULE 7
+```{r, echo=FALSE}
+#By the summary above, about 43% of the variation is explained by the model. 
+print("R^2 and the Adj. R^2 value of fixed_model")
+summary(fixed_model)$r.squared
+summary(fixed_model)$adj.r.squared
+```
+As shown in the summary above, about 43% of the variation is explained by the model. Below, we check for many multicolinearity.
+
+```{r, echo=FALSE}
+#VIF 
+vif(fixed_model, type="predictor")
+
+#paiewise corrlstion of bedrooms/bathrooms
+print("corelation Bedrooms and Bathrooms")
+cor(final_data1$Bedrooms, final_data1$Bathrooms)
+
+print("corelation Bedrooms and Cleanliness_Rating")
+cor(final_data1$Bedrooms, final_data1$Cleanliness_Rating)
+
+print("corelation Bathrooms and Cleanliness_Rating")
+cor(final_data1$Bathrooms, final_data1$Cleanliness_Rating)
+```
+Checking for multicolinearity, we see that there is a huge multicollinearity for the bathrooms predictor. To investigate this further, we computed the correlation between each predictors it show thats Bedrooms and Bathrooms have a very high corelation `r cor(final_data1$Bedrooms, final_data1$Bathrooms)` relative to other predictors. This makes sense because higher priced properties generally tend to have more bedrooms and bathrooms and the amount of each room increases together. It's very rare for a house to have 5 bedrooms but just 1 bathroom. 
+
+```{r, echo=FALSE}
+#New model without the bathroom
+fixed_model2 <- lm(logPrice ~ I(1/Bedrooms^3) + Cleanliness_Rating^10 + Entire_Place + Superhost:Bedrooms, data = final_data1)
+summary(fixed_model2)
+```
+Therefore we created another model called fixed_model2 which is the same model as fixed_model, just without the bathrooms predictors to address multicollinearity. The model is given by the following:
+
+$$\text{logPrice } (Y) = 4.552178
+- 0.242776\text{(Number of Bedrooms)}^{-3}$$
+$$+ 0.101137\text{(Cleanliness Rating)}^{10}
+-0.618172\textbf{ I}(\text{Entire Place = Shared}) + 0.231640\text{(Superhost=`t' : Bedrooms)} +\hat\epsilon$$
+
+
+### Rechecking Assumption
+From these plots (in the appendix), The results are very similar with the fixed_model. Therefore we must investigate deeper. 
+
+### MODULE 8
+```{r, include=FALSE}
+#Define a function that display problematic obs
+probobs <- function(model, data){
+  
+n <- nrow(data)
+p <- length(coef(model))-1
+
+# leverage cutoff
+print("leverage points")
+h_cut <- 2*(p+1)/n
+print(length(which(hatvalues(model) > h_cut)))
+
+# outliers
+print("outliers (large dataset n>=50)")
+print(length(which(rstandard(model) > 4 | rstandard(model) < -4)))
+
+# cooks cutoff
+D_cut <- qf(0.5, p+1, n-p-1)
+print("Cooks distance for influence points")
+print(length(which(cooks.distance(model) > D_cut)))
+
+# DFFITS cutoff
+fits_cut <- 2*sqrt((p+1)/n)
+print("DFFITS")
+print(length(which(abs(dffits(model)) > fits_cut)))
+
+# DFBETAS cutoff
+beta_cut <- 2/sqrt(n)
+for(i in 1:(p+1)){
+  print(paste0("Beta ", i-1))
+  print(length(which(abs(dfbetas(model)[,i]) > beta_cut)))
+}
+}
+```
+
+```{r,echo=FALSE}
+probobs(fixed_model, final_data1)
+probobs(fixed_model2, final_data1)
+```
+Determining problematic observations, we see that both models have same number of outliers, no influence points using cooks distance, but tends to have more Leverage points, and similar amount of observations that influence the coefficients even though it has 1 less predictor in the fixed_model2. Therefore, we may lean more towards fixed_model.
+
+### MODULE 9
+```{r, echo=FALSE}
+#we already saw that R2 and Adj R2 is higher in model1
+likelihood_measures <- function(model, data){
+  n <- nrow(data)
+  p <- length(coef(model))-1
+  cbind(extractAIC(model, k=2)[2],
+        extractAIC(model, k=log(n))[2],
+        extractAIC(model, k=2[2]+(2*(p+2)*(p+3)/(n-p-1)))
+        )
+}
+```
+
+```{r, echo=FALSE}
+print("Likelihood measures of fixed_model")
+likelihood_measures(fixed_model, final_data1)
+
+print("Likelihood measures of fixed_model2")
+likelihood_measures(fixed_model2, final_data1)
+#original model better
+```
+We already saw in the summaries of each model that the original model (fixed_model) has higher R^2/Adj R^2 value. After computing AIC, BIC, AICc (first, second, third column respectively), we see that AIC and BIC both agrees that fixed_model is the better model while AIc states that fixed_model2 is the better model but just by 1. After these factors, we conclude fixed_model is better because even though it has an extra predictor, these likelihood measures return a better value for the fixed_model. 
+
+```{r, include=FALSE}
+#Automated Selection tool method
+#forward selection
+stepAIC(lm(logPrice ~ 1, data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)]),
+        scope=list(upper=lm(logPrice ~ ., data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)])),
+        direction = "forward", k=2
+        )
+```
+
+```{r, include=FALSE}
+#backward
+stepAIC(lm(logPrice ~ ., data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)]),
+        scope=list(upper=lm(logPrice ~ 1, data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)])),
+        direction = "backward", k=2
+        )
+```
+
+```{r, include=FALSE}
+#stepwise
+stepAIC(lm(logPrice ~ ., data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)]),
+        scope=list(upper=lm(logPrice ~ 1, data=final_data1[,c(2,4,6,7,9,10,11,12,13,14)])),
+        direction = "both", k=2
+        )
+```
+After using the automated selection algorithm to determine if there is another model with same pool of predictors that are better than our current best model fixed_model. Before applying this algorithm, we excluded Bedrooms, Bathrooms, and Cleanliness rating from the scope_list and instead included t_Bedrooms, t_Bathrooms, t_Cleanliness_rating which are the transformed values of each respective predictors. All of foward, backward, stepwise direction agrees on 1 model, which is including every predictor in the dataset except the categorical variable superhost. All directions forward, backward, and stepwise automated selection agrees on 1 model which is given by: 
+$${logPrice} (Y) = 4.739-0.5055I(x_{EntirePlace}=Shared)-0.03173x_{Bed} + 0.008942x_{Amenities} + 0.1320x_{Accommodates}$$
+$$-0.03950x_{HostCommunicationRating} -0.1179x_{Bedrooms}^{-3} -0.1572x_{Bathrooms}^{-2} +1.249e^{08}x_{CleanlinessRating}^{-10}$$
+
+
+
+## Discussion
+
+As a result of the analysis using several statistical methods, we conclude that model obtained from the automated selection tool provides the best explanation for our research question. It contains the number of bedrooms, the number of bathrooms, the rating of cleanliness, the number of beds, the host communication rating, the number of accommodations, the number of amenities and whether or not the listing was shared as variables. In other words, these variables are significantly associated with the overall price of Airbnb listings. Based on the coefficients corresponding to these variables,  an increase in the number of amenities, accommodates and cleaning rating causes the increase in the price of airbnb, while other variables decrease the price of airbnb when their values increase. Our best model is the descriptive rather than predictive Since it focuses on identifying variables related to the response. Thus, it is suitable to be used to answer our research question. We expected the Superhost’ rating to be an important factor in the price, however, through the analysis, we got the unexpected result that the model does not include it.
+
+There are some limitations to consider. The automated selection tool we used to get the best model is likely to exclude the significant predictor. In our case, ‘Superhost' could be removed in our model even if it is actually significant in our analysis. Moreover, from the result section, we noticed severe multicollinearity between the number of bedroom and bathroom but our final model contains them. This is likely to cause some potential problems. For example, coefficients in the model could have the wrong sign compared to the literature, then it could lead our best model to explain the relationship between predictors and response incorrectly. Since it is often hard to prevent this problem, we decided to leave this issue as a limitation. However, despite of these limitations, our final model is still reasonable.
+
+
+## Ethics
+
+When discussing the model selection, we encountered two noteworthy questions of negligence. Firstly, we had found that our initial model violated every assumption, and set out to correct it with a Box-Cox transformation, which would mean omitting 38 pieces of data that had properties of zero bathrooms or were rated a zero for their cleanliness rating. Having to omit this data presented a slight discussion, as it means that our model may not report as accurately when
+
+evaluating situations that hold these values, and could hence result in misinformation being spread and result in negligence on our part. However, because this accounted for approximately 0.3% of the observations, we considered it to be negligible data. After performing our transformation, we analyzed our new model and found that there was a strong multi-collinear relationship between the number of bedrooms and bathrooms. While we found that this is likely typical, it did prove a point of discussion as this is a violation of multiple linear regressions. Our concern was that by leaving it in, it may result in a disproportionate positive or negative relationship between price and more severe cases of the numbers of bathrooms and bedrooms. This is yet another cause of negligence, as we acknowledge it could be problematic for those attempting to use this model for pricing and these numbers could result in disproportionate sways. However, we decided to keep them in our model, as AIC and BIC testing both confirmed a model with these predictors was best.
+
+## Bibliography
+
+Chattopadhyay, Manojit, and Subrata Kumar Mitra. “Do airbnb host listing attributes influence room pricing homogenously?” 
+International Journal of Hospitality Management, vol. 81, 2019, pp. 54–64, https://doi.org/10.1016/j.ijhm.2019.03.008.
+
+Kwok, Linchi, and Karen L. Xie. “Pricing strategies on airbnb: Are multi-unit hosts Revenue Pros?” 
+International Journal of Hospitality Management, vol. 82, 2019, pp. 252–259, https://doi.org/10.1016/j.ijhm.2018.09.013.
+
+Voltes-Dorta, Augusto, and Agustín Sánchez-Medina. “Drivers of airbnb prices according toproperty/room type, season and location: A regression approach.” 
+Journal of Hospitality and Tourism Management, vol. 45, 2020, pp. 266–275, https://doi.org/10.1016/j.jhtm.2020.08.015.
+
+## Apendix 
+
+Below are the rest of the plots for checking linear assumptions of fixed_model:
+\newline
+```{r, echo=FALSE}
+plot(ehat_fixed ~ 1/(final_data1[,5])^2, main = "Residuals vs Bathrooms", ylab = "Residuals", xlab = "Bathrooms")
+plot(ehat_fixed ~ final_data1[,5]^10, main = "Residuals vs Cleanliness Rating", ylab = "Residuals", xlab = "Cleanliness Rating")
+boxplot(ehat_fixed ~ final_data1$Superhost, main = "Residuals by Superhost", ylab = "Residuals", xlab = "Superhost")
+```
+\newpage
+Below are the rest of the plots for checking linear assumptions of fixed_model2:
+\newline
+```{r, echo=FALSE}
+ehat_fixed2 <- resid(fixed_model2)
+yhat_fixed2 <- fitted(fixed_model2)
+
+#1. MLR Condition 1: Conditional Mean Response 
+plot(x = yhat_fixed2   , y =  final_data1$logPrice  , main="Response vs Fitted",
+     xlab="Fitted", ylab="Price")
+abline(a = 0, b = 1, lty=2)
+
+#2. MLR Condition 2: Predictor vs Predictor 
+final_data1$t_bedrooms <- 1/final_data1$Bedrooms^3
+final_data1$t_clean_rating <- final_data1$Cleanliness_Rating^10
+pairs(final_data1[,c(12,14)])
+```
+\newline
+```{r, echo=FALSE}
+#3. SLR: Residual vs Fitted (Y)
+plot(x = yhat_fixed2, y = ehat_fixed2, main = "Residuals vs Fitted Value", ylab = "Residuals", xlab = "Fitted Value")
+
+#4. Residual vs Predictors (numerical)
+plot(ehat_fixed2 ~ 1/(final_data1[,3])^3, main = "Residuals vs Bedrooms", ylab = "Residuals", xlab = "Bedrooms")
+plot(ehat_fixed2 ~ final_data1[,5]^10, main = "Residuals vs Cleanliness Rating", ylab = "Residuals", xlab = "Cleanliness Rating")
+
+#5. Boxplot for Predictors (categorical)
+boxplot(ehat_fixed2 ~ final_data1$Entire_Place, main = "Residuals by Entire Place", ylab = "Residuals", xlab = "Entire Place")
+boxplot(ehat_fixed2 ~ final_data1$Superhost, main = "Residuals by Superhost", ylab = "Residuals", xlab = "Superhost")
+
+
+#6. QQ Plots
+qqnorm(ehat_fixed2)
+qqline(ehat_fixed2)
+```
+
+
+
+
+
+
+

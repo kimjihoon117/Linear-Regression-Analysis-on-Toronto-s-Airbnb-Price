@@ -1,0 +1,236 @@
+---
+title: "Complete Multiple Linear Regression on Toronto's AirBnB Pricng (Part 1: Creating a Linear Model and Checking Assumptions)"
+output:
+  pdf_document: default
+date: "2023-10-04"
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(rmarkdown)
+library(knitr)
+raw_uncleaned_data <- read.csv("original_dataset.csv")
+head(raw_uncleaned_data)
+```
+
+
+## Cleaning the dataset
+```{r, include=FALSE}
+#Here I removed all the unnecessary columns and renamed the variables
+data <- raw_uncleaned_data %>%
+  select(
+    Price = price,
+    Entire_Place = room_type,
+    Bedrooms = bedrooms,
+    Beds = beds,
+    Bathrooms = bathrooms_text,
+    Amenities = amenities,
+    Accommodates = accommodates,
+    Cleanliness_Rating = review_scores_cleanliness,
+    Host_Communication_Rating = review_scores_communication,
+    Superhost = host_is_superhost
+  )
+```
+This dataset contains (1 Response, 9 Predictor Variable) where Response (Price per night)
+variable is numerical. 
+
+9 Predictor variable has:
+
+7 numerical which are Bedrooms, Beds, Bathrooms, Amenities, Accommodates
+Cleanliness_Rating, Host Communication Rating
+
+2 categorical variables which are Entire_Place (1=Entire Place, 0=Shared Private Room)
+and Superhost (1=Host is Superhost, 0=Host is not Superhost)
+
+Price: Price of the AirBnB per night in Canadian Dollars.
+Entire Place: Whether the the guest has the whole property to themselves or shares with other guests.
+Bedrooms: Number of bedrooms in the AirBnB (private room is considered 1 bedroom).
+Beds: Number of beds available for guests.
+Bathrooms: Number of bathrooms in the AirBnB (shared bathroom is considered 0.5 bathroom).
+Amenities: Number of amenities accessible by guests during stay
+Accommodates: Max number of guests allowed to stay in the AirBnB
+Cleanliness_Rating: Rating of Cleanliness by guests out of 5
+Host_Communication_Rating: Rating of Host Communication by guests out of 5
+Superhost: Whether the host is a superhost or not. 
+
+
+```{r, include=FALSE}
+#Here I clean the values of the data
+
+#PRICE: Convert price to num. chr $xxx -> num xxx (NA exists)
+data$Price <- as.numeric(gsub("\\$", "", data$Price))
+
+#ENTIRE_PLACE: Simplify the terms {Entire home/apt --> Entire} and {Privte room --> Shared}
+data$Entire_Place <- ifelse(data$Entire_Place == 'Entire home/apt', 'Entire', 'Shared')
+
+#BEDROOMS: If the value of Bedroom is NA or empty (its a studio or shared private room) convert to Bedroom = 1
+data$Bedrooms <- ifelse(is.na(data$Bedrooms) | data$Bedrooms == "", 1, as.numeric(data$Bedrooms))
+
+#BEDS: If the value of Beds is NA or empty, convert to Beds = 0
+data$Beds <- ifelse(is.na(data$Beds) | data$Beds == "", 0, as.integer(data$Beds))
+
+#BATHROOMS: Convert Bathrooms to num. chr x baths -> num x
+#           Also, convert 'half bathroom' to 0.5
+data$Bathrooms <- sapply(data$Bathrooms, function(x) {
+  if (grepl("alf", x)) {
+    return(0.5)
+  } else {
+    return(as.numeric(gsub("[^0-9.]", "", x)))
+  }
+})
+
+#AMENITIES: Since its hard to compare by each amenities, convert it to amenities count
+#           ex) [wifi, air conditioning, shampoo] = num 3
+data$Amenities <- str_count(data$Amenities, ",") + 1
+
+#ACCOMMODATES: all good
+
+#CLEANLINESS_RATING, HOST_COMMUNICATION_RATING: all good
+
+#SUPERHOST: If the value of Supoerhost is NA or blank, convert to Superhost ='f'
+data$Superhost <- ifelse(is.na(data$Superhost) | data$Superhost == "", 'f', data$Superhost)
+```
+
+```{r,include=FALSE}
+#After cleaning the data, remove all the rows with N/A values as it is not appropriate to assign values to Price, or Ratings.  
+final_data <- na.omit(data)
+```
+
+We collected raw data from ['http://insideairbnb.com/get-the-data/'](http://insideairbnb.com/get-the-data/), which comprised a total of 18,921 observations across 75 variables. In our analysis, we focused on understanding how specific predictors contribute to the overall price of Airbnb listings in Canadian Dollars. To do this, we selected the Price per night as our response variable.
+
+Many of the variables in the dataset, such as property ID or the URL of the host's profile picture, were deemed to have no direct impact on Airbnb prices. To identify the most critical factors influencing pricing, we carefully selected nine variables (predictors) that we believe play a significant role in determining the property's price. These variables are attributes that most guests consider when choosing a place to rent, including the number of bedrooms, beds, and bathrooms, the maximum guest capacity, whether the listing is shared or private, a list of amenities, ratings from previous guests, and the credibility of the host.
+
+Once we had our selected predictors, our primary objective was to transform the data into a suitable format for analysis. We encountered various data formatting challenges, such as prices represented as strings (e.g., '$50.00') and bathrooms described as '1 baths' or 'half baths.' To address this, we used the `gsub()` function to remove non-numeric characters and then applied `as.numeric()` to convert the strings into numeric values. For instance, we identified and replaced 'alf' to convert 'Half baths' or 'half baths' into the numeric value 0.5.
+
+Additionally, we observed that in shared listings, the number of bedrooms was often missing, represented as NA, or blank. To standardize this, we set all such values to 1. Similarly, for the number of beds, if the value was NA or blank, we converted it to 1. We handled categorical variables like 'Entire_Place' and 'Superhost' by converting missing or blank values of 'Superhost' to 'f,' indicating that the host is not a superhost. For 'Entire_Place,' which had no missing values, we simplified the categories to 'Entire' and 'Shared.'
+
+The 'Amenities' variable presented a unique challenge because it contained a list of amenities in a single cell, making it difficult to categorize. To make it more manageable, we transformed it into a numerical variable by counting the number of amenities available to guests.
+
+For the 'Price' and 'Ratings' variables, we opted not to assign specific values to missing data. Instead, we chose to remove rows with blank or NA values, ensuring data quality and reliability.
+
+After this data cleaning and preprocessing, our dataset consisted of 14,290 observations, each including one response variable, seven numerical predictors, and two categorical predictors. This cleaned and finalized dataset was ready for modeling using linear regression to explore the relationships between these predictors and Airbnb listing prices.
+
+```{r,include=FALSE}
+#exporting cleaned data (final_data) as csv
+write.csv(final_data, file = "final_data.csv", row.names = FALSE)
+```
+
+
+## Linear Regression
+```{r,echo = FALSE}
+#Select 5 Variables: Bedrooms, Bathrooms, Accommodates, Cleanliness Rating, Entire Place
+mlr_model <- lm(Price~Bedrooms+Bathrooms+Cleanliness_Rating+Entire_Place+Superhost:Bedrooms, final_data)
+
+summary(mlr_model)$coefficients %>% kable()
+
+```
+
+Our linear model is:
+$$\text{Price} = 12.48299
++ 28.10433\text{ Number of Bedrooms} + 75.93028\text{ Number of Bathrooms} + 11.98500\text{ Cleanliness Rating}$$
+$$-93.72271\textbf{ I}(\text{Entire Place = Shared}) + 11.94399\text{(Superhost=`t' x Bedrooms)} +\hat\epsilon$$
+
+This implies that for every additional bedrooms, the price is expected to increase by CAD 28.10433 on average, 
+and for every additional bathrooms, the price is expected to increase by CAD 75.93028 on average,
+and for every 1 point increase in the rating, the price is expected to increase by CAD 11.98500 on average,
+and if the property is shared, the price is expected to decrease by CAD 93.72271 on average. 
+In other words, the mean difference in price between a shared property and an entire property is 93.72271
+and finally, if the host is a superhost (hosts that qualify certain conditions), then for every 1 person increase in the number of bedrooms, the price is expected to increase by CAD 11.94399 + 28.10433 on average.
+Additionally, if the host is not a superhost, every 1 person increase in the number of bedrooms, the price is only expected to increase by the original amount which is CAD28.10433 on average. 
+Note: average refers to mean.
+
+In addition, using the provided data that is cleaned, we can identify and verify the assumptions made for our estimated model. Our linear regression model rests on four key assumptions: Linearity, Uncorrelated Errors, Constant Error Variance, and Normality. These assumptions help us understand how errors, and thus the responses, behave in the larger population from which our sample is drawn. If any of these assumptions are not met, it gives us insights into how the population might be represented when the assumptions are satisfied. 
+
+For each of the AirBnB place, we have data on price per night of the AirBnB in Canadian Dollars, number of bedrooms, bathrooms, rating of place cleanliness, whether the place is shared or not, and whether the host is a superhost. To predict the AirBnB prices, we developed models using one response variable (the price) and six predictors (the features mentioned). This model comprises four numerical discrete predictors and two categorical discrete predictors. We then compare the resulting fitted plots with other plots. The plots are shown below sequentially:
+
+```{r, echo=FALSE}
+y_hat <- fitted(mlr_model)
+
+e_hat <- resid(mlr_model)
+
+plot(x = y_hat, y = e_hat, main = "Residuals vs Fitted Value", ylab = "Residuals", xlab = "Fitted Value")
+```
+The plot "Residuals vs Fitted" is a comparison between fitted value and residuals. Based on the plot, we can notice constant variable assumption is violated by analyzing the shape. The spread of residuals should be roughly the same across all values of the fitted values. However, the plot shows a fan-shaped, with the spread of residuals increasing as the fitted values increase, indicating heteroscedasticity. This means the variance of residuals is not constant across the levels of the independent variable.
+
+To counter this violation, addressing heteroscedasticity might involve transforming the response variable. These can reduce variances of the variables. Thus, to reduce variables, variance stabilizing transformation methods such as applying square root transformations can be used to stabilize variances.
+
+```{r,echo=FALSE}
+plot(e_hat ~ final_data$Bedrooms, main = "Residuals vs Bedrooms", ylab = "Residuals", xlab = "Bedrooms")
+```
+The second plot illustrates the relationship between residuals and the number of bedrooms. As observed in the previous plot, it becomes evident that our multiple linear regression (MLR) model violates the assumption of constant variance similar with "Residuals vs Fitted". This violation is evident because there is an inconsistent spread of residuals across different bedroom values, leading to a fan-shaped pattern in the plot. Specifically, as the number of bedrooms decreases, the values of residuals tend to spread out. There are also some residual values that appear clustered in the plot, but their impact is relatively small compared to the overall sample size, and the samples for different bedroom counts are independent of each other. Consequently, we do not find evidence that the assumption of uncorrelated errors is violated.
+
+However, there is a single outlier in the data, which corresponds to an accommodation with 50 bedrooms. Since this outlier represents a unique case and does not substantially affect our assumption testing, we have decided to exclude this outlier from our analysis.
+
+In order to solve this violated assumption, using the variance stabilizing transformation method can be a way. For example, since the plot is a slight right-skewed shape, natural logarithm and square root can be used by being applied to the response. Then the pattern will be shown much better than now.
+
+```{r,echo =FALSE}
+plot(e_hat ~ final_data$Bathrooms, main = "Residuals vs Bathrooms", ylab = "Residuals", xlab = "Bathrooms")
+```
+In case of "Residuals vs Predictor" which in this case is Bathrooms, this is a comparison between bathroom variable with residuals. This plot seems that it violated an assumption of uncorrelated errors due to some clustered residuals on the right hand side of the plot, but it needs a much larger cluster of many points to appear separate to say that violates uncorrelated error. 
+
+In addition, this plot also did not violated constant variance assumption as the maximum and minimum residuals for each bathroom groups have similar ranges. The discrete nature of the "Bathrooms" variable results in clear vertical bands. While this does not directly violate linear regression assumptions, it indicates that "Bathrooms" might be better treated as a categorical variable, especially if the effect of each additional bathroom does not necessarily linear on the response.
+
+Consequently, there is not a clear-cut violation of the traditional linearity or homoscedasticity assumptions based on this plot. However, the discrete nature of the "Bathrooms" predictor suggests an improvement that we can consider treating it as a categorical variable in the regression model.
+
+```{r,echo =FALSE}
+plot(e_hat ~ final_data$Cleanliness_Rating, main = "Residuals vs Cleanliness Rating", ylab = "Residuals", xlab = "Cleanliness Rating")
+```
+This plot provides a comparison between cleaning rates and residuals, revealing the violation of three key assumptions.
+
+Firstly, the linearity assumption is violated. A linear relationship is expected in this plot, characterized by a straight line rather than curves or other symmetrical shapes. However, in this case, there is a noticeable upward-curving pattern, indicating a violation from linearity. To address this issue, one potential solution is to apply the Box-Cox transformation using maximum likelihood estimation. This transformation can result in a plot with a linear shape, as demonstrated earlier. To apply maximum likelihood estimation, methods such as Log-likelihood can be used.
+
+Secondly, the plot violates the assumption of uncorrelated errors. Within each group of cleaning rates, there are clusters of data points. Ideally, all data points should be independent without forming distinct groups. To mitigate this violation, it is necessary to introduce a method to increase the heteroscedasticity characteristic, thereby reducing the dependence between data points.
+
+Additionally, the assumption of constant variance is also violated. The plot reveals a fan-shaped, particularly on the right-hand side, as the cleaning rate approaches 5. This spreading of variance leads to inconsistency in variance, which is not in line with the constant variance assumption. To address this violation, it is advisable to employ a variance stabilizing transformation. Given the left-skewed nature of the data, transformations such as squaring, taking cube roots, or applying logarithmic functions can be effective in improving the skewness and stabilizing the variance. 
+
+```{r,echo =FALSE}
+boxplot(e_hat ~ final_data$Entire_Place, main = "Residuals by Entire Place", ylab = "Residuals", xlab = "Entire Place")
+```
+
+In case of the comparison between entire place variable with residuals, the residual versus entire place plot is another scatter plot. However, since entire place is categorical, we can use a side-by-side box plot to get a more readable residual plot, which seems to have two levels: "Entire" and "Shared". By analyzing the box plot, we can notice there are huge groups of outliers for each groups. This implies there are two huge clusters. There will be each clustered groups in upper and lower outlier boundaries. These clusters shows it violated uncorrelated errors. 
+
+In order to solve uncorrelated errors, it is appropriate to remove dependent variables that are correlated to each other. Removing homogeneous points will improve heteroscedasticity reducing clustered groups especially in the outliers. The assumption will then improve as the points are now spread evenly across the box plot.
+
+```{r,echo=FALSE}
+boxplot(e_hat ~ final_data$Superhost, main = "Residuals by Superhost", ylab = "Residuals", xlab = "Superhost")
+```
+Similarly, since "Superhost" is a categorical variable with two levels, "f" (not a Superhost) and "t" (Is a Superhost), we use a side-by-side box plot to visualize the distribution of data. Upon analyzing the box plot for the "Superhost" variable, we observed substantial clusters of outliers in both Superhost and non-Superhost groups, mirroring the behavior of the "Entire Place" predictor. This indicates the likely violation of same the assumption as the Entire_Place variable which is the uncorrelated errors.
+
+Having established that both "Bedrooms" and "Superhost" predictors violate the assumptions of linear regression, we can reasonably infer that the interaction variable in our multiple linear regression model, 'Superhost:Bedrooms,' also violates the assumptions of linear regression.
+
+```{r,echo =FALSE}
+qqnorm(e_hat)
+qqline(e_hat)
+```
+
+As the above QQ plot shown, we can see that Normality assumption for our MLR is violated. This is because there are serious deviations from the diagonal line. Even though lots of samples are used, the violation is clearly displayed. We can use Box-Cox transformation to improve normality by using maximum likelihood estimation to estimate the power transformation. If we use this method, then the deviations from the diagonal line would be not more severe than the plot above.
+
+Moreover, to tackle issues related to non-constant variance, variance-stabilizing transformations come into play. For instance, the square root transformation can effectively spread the variance more evenly, alleviating the fanning effect observed in the residuals.
+
+In essence, there exist several methods to rectify these violations, but the key lies in selecting the appropriate method that aligns with the specific assumption being violated.
+
+```{r,echo=FALSE}
+#Response vs Fitted Values for MLR
+plot(x = y_hat   , y =  final_data$Price  , main="Response vs Fitted",
+     xlab="Fitted", ylab="Price")
+abline(a = 0, b = 1, lty=2)
+```
+The 'Response vs Fitted' graph implies that the conditional mean response is likely violated, as it appears random, but it still appears to be fanning out in the more consolidated area and spanning out into almost a rectangular shape beyond that. Thus, while we cannot necessarily identify the function that is influencing this scatter, it still does appear to be random, as it seems to be acting in a simulated way. Because this has been violated, we cannot evaluate our residual plots as usual due to the conditional mean response likely failing, thus any violations that we may have found with any of our key assumptions in linearity, constant variance or uncorrelated errors could be invalid, as they may have subsequently been swayed by the necessity of this graph being valid.
+
+```{r,echo=FALSE}
+#Predictor vs Predictor for MLR
+pairs(final_data[,c(3,5,8)])
+```
+The conditional mean predictors appear to be violated as well, as they do not have any recognizable linear pattern in many of the above graphs. For example, the graph in row 2, column 3 appears to have an almost exponential shape about it, while the graph in row 3 column 1 appears to have an almost parabolic shape about it. Hence, it is reasonable to state that these conditions have likely been violated. As a result, we cannot trust any of our residual plots, as this further makes any interpretation from them unreliable. Because there appears to be so many potential exponential patterns in these plots, it is possible that they have contributed to sway in those of our residual versus fitted and led us astray into believing that we may be missing some kind of exponential in our equation, though it is more likely due to this condition failing than it is to a missing function in our regression.
+
+## Conclusion
+
+In the construction of the plots, we adopted the data regarding information on AirBnB. This dataset contains (1 Response, 9 Predictor Variable) where Response (Price per night) variable is numerical. With these data, we were able to construct 9 plots, 7 identifying for the assumptions for the linear regression model and 2 for additional conditions for the MLR. While constructing 9 plots there are key takeaways from the various plots we have examined, it is evident that each plot highlights different violations of statistical assumptions. Also, the data contains a single outlier, which is drawn from a record indicating 50 bedrooms. While this point stands out at the extreme end of the plot, its isolated value does not significantly impact the overall data. The most prominent violations pertain to the assumptions of constant variance and uncorrelated errors, primarily due to the presence of a fan-shaped and clustered groups in the data. Additional conditions were also violated as well due to the lack of recognizable curves and fanning shapes. 
+
+Given the substantial data set comprising 14,290 samples, encountering violations across our 5 predicted variables, as well as between estimated values and residuals, is not uncommon. However, it is essential to recognize that these violations are susceptible through appropriate transformation methods and variance stabilizing techniques. Addressing challenges of assumptions especially related to linearity and normality can be accomplished using methods such as the Box-Cox transformation, natural logarithm, or applying square or cube root transformations. These approaches help align the data with the assumptions of linearity and normality.
+
+## Bibliography
+
+1. Grolemund, G. (2014) *Introduction to R Markdown*. RStudio. [https://rmarkdown.rstudio.com/articles_intro.html](https://rmarkdown.rstudio.com/articles_intro.html). (Last Accessed: April 4, 1991)
+
+2. n.a. (2023). Get the Data. Inside Airbnb. [http://insideairbnb.com/get-the-data/]
